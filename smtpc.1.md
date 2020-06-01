@@ -29,6 +29,13 @@ Any options not listed here are silently ignored.
 
     Show dialog in the session.
 
+* `--auth` _"auth string"_
+
+    Specifies an authentication string to use when the server supports
+    AUTH. The string should contain a mechanism and payload, for example:
+
+    `--auth "PLAIN $(echo -ne "\0username\0password" | base64)"`
+
 * `--esmtp` _host_[:_port_]
 
     Uses TCP socket and ESMTP protocol to submit message.

@@ -24,7 +24,8 @@
 #define SMTPC_ERR_SOCKET (255)
 #define SMTPC_ERR_PROTOCOL (254)
 #define SMTPC_ERR_SUBMISSION (253)
-#define SMTPC_ERR_UNKNOWN (252)
+#define SMTPC_ERR_AUTH (252)
+#define SMTPC_ERR_UNKNOWN (251)
 
 #define SMTPC_7BIT (0)
 #define SMTPC_8BIT (1)
@@ -56,6 +57,7 @@ static struct {
     int verbose;
     unsigned int protocol;
     char *myname;
+    char *auth;
     char *nodename;
     char *servname;
     char *path;
@@ -64,7 +66,7 @@ static struct {
     char *envid;
     int smtputf8;
 } options = {
-0, 0, 0, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0};
+0, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0};
 
 static struct {
     char **recips;
@@ -171,6 +173,7 @@ static int parse_options(int *argcptr, char ***argvptr)
     options.verbose = 0;
     options.protocol = 0;
     options.myname = "localhost";
+    options.auth = NULL;
     options.nodename = NULL;
     options.servname = NULL;
     options.sender = NULL;
@@ -228,6 +231,8 @@ static int parse_options(int *argcptr, char ***argvptr)
 		}
 	    } else if (strcmp(arg, "--iam") == 0 && i + 1 < argc)
 		options.myname = argv[++i];
+	    else if (strcmp(arg, "--auth") == 0 && i + 1 < argc)
+		options.auth = argv[++i];
 	    else if (strcmp(arg, "--lmtp") == 0 && i + 1 < argc) {
 		if (options.protocol != 0) {
 		    fprintf(stderr, "Multiple servers are specified\n");
@@ -673,6 +678,22 @@ static ssize_t transaction(void)
     }
     parse_extensions();
 
+    if (server.extensions & SMTPC_EXT_AUTH) {
+        switch (dialog(300, "AUTH %s\r\n", options.auth)) {
+        case '2':
+            break;
+	case '3':
+	    return SMTPC_ERR_AUTH;
+        case '4':
+        case '5':
+	    return 0;
+        case -1:
+	    return SMTPC_ERR_SOCKET;
+        default:
+	    return SMTPC_ERR_PROTOCOL;
+        }
+    }
+
     if (server.extensions & SMTPC_EXT_8BITMIME &&
 	(message.headfeature != SMTPC_7BIT
 	 || message.bodyfeature != SMTPC_7BIT))
@@ -817,6 +838,8 @@ static ssize_t session()
     switch (dialog(300, NULL)) {
     case '2':
 	break;
+    case '3':
+	return SMTPC_ERR_AUTH;
     case '4':
     case '5':
 	return SMTPC_ERR_SUBMISSION;
@@ -885,6 +908,10 @@ int main(int argc, char *argv[])
 	    break;
 	case SMTPC_ERR_PROTOCOL:
 	    fprintf(stderr, "Unexpected response: %s", server.buf);
+	    break;
+	case SMTPC_ERR_AUTH:
+	    fprintf(stderr, "Authorisation failure: %s", server.buf);
+	    dialog(10, "QUIT\r\n");
 	    break;
 	case SMTPC_ERR_SUBMISSION:
 	    dialog(10, "QUIT\r\n");
